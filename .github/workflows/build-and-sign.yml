@@ -1,0 +1,68 @@
+name: Build and Sign macOS App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest  # ← GitHub предоставляет виртуальный Mac!
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Import signing certificate
+      env:
+        SIGNING_CERTIFICATE_P12_DATA: ${{ secrets.SIGNING_CERTIFICATE_P12_DATA }}
+        SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+      run: |
+        # Импортируем ваш сертификат на виртуальном Mac
+        echo $SIGNING_CERTIFICATE_P12_DATA | base64 --decode > certificate.p12
+        
+        KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+        KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+        
+        security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+        security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        
+        security import certificate.p12 -k $KEYCHAIN_PATH -P $SIGNING_CERTIFICATE_PASSWORD -T /usr/bin/codesign
+        security list-keychain -d user -s $KEYCHAIN_PATH
+        security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+        
+    - name: Compile AppleScript
+      run: |
+        # Компилируем на виртуальном Mac
+        osacompile -o "Safari Launcher.app" safari_launcher.applescript
+        
+    - name: Sign application
+      env:
+        DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
+      run: |
+        # Подписываем на виртуальном Mac
+        codesign --force --options runtime --sign "$DEVELOPER_ID" "Safari Launcher.app"
+        codesign --verify --verbose "Safari Launcher.app"
+        
+    - name: Create DMG
+      run: |
+        # Создаем DMG на виртуальном Mac
+        mkdir dmg_contents
+        cp -R "Safari Launcher.app" dmg_contents/
+        
+        hdiutil create -volname "Safari Launcher" \
+                       -srcfolder dmg_contents \
+                       -format UDZO \
+                       "Safari Launcher.dmg"
+        
+        codesign --sign "$DEVELOPER_ID" "Safari Launcher.dmg"
+        
+    - name: Upload signed artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: signed-safari-launcher
+        path: |
+          Safari Launcher.app
+          Safari Launcher.dmg
+        retention-days: 30

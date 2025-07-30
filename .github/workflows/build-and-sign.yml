@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest  # ← GitHub предоставляет виртуальный Mac!
+    runs-on: macos-13  # Fixed macOS version to avoid migration issues
     
     steps:
     - name: Checkout code
@@ -18,7 +18,7 @@ jobs:
         SIGNING_CERTIFICATE_P12_DATA: ${{ secrets.SIGNING_CERTIFICATE_P12_DATA }}
         SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
       run: |
-        # Импортируем ваш сертификат на виртуальном Mac
+        # Import your certificate on virtual Mac
         echo $SIGNING_CERTIFICATE_P12_DATA | base64 --decode > certificate.p12
         
         KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
@@ -34,20 +34,20 @@ jobs:
         
     - name: Compile AppleScript
       run: |
-        # Компилируем на виртуальном Mac
+        # Compile on virtual Mac
         osacompile -o "Safari Launcher.app" safari_launcher.applescript
         
     - name: Sign application
       env:
         DEVELOPER_ID: ${{ secrets.DEVELOPER_ID }}
       run: |
-        # Подписываем на виртуальном Mac
+        # Sign on virtual Mac
         codesign --force --options runtime --sign "$DEVELOPER_ID" "Safari Launcher.app"
         codesign --verify --verbose "Safari Launcher.app"
         
     - name: Create DMG
       run: |
-        # Создаем DMG на виртуальном Mac
+        # Create DMG on virtual Mac
         mkdir dmg_contents
         cp -R "Safari Launcher.app" dmg_contents/
         
@@ -59,7 +59,7 @@ jobs:
         codesign --sign "$DEVELOPER_ID" "Safari Launcher.dmg"
         
     - name: Upload signed artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Updated to v4
       with:
         name: signed-safari-launcher
         path: |
